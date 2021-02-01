@@ -1,12 +1,37 @@
-#required packages: tidyverse, cmdstanr
-library(tidyverse)
+#preamble (options, installs, imports & custom functions) ----
+
+options(warn=1) #really should be default in R
+`%!in%` = Negate(`%in%`) #should be in base R!
+
+# specify the packages used:
+required_packages = c(
+	'crayon' #for coloring terminal output
+	, 'bayesplot' #for convenient posterior plots
+	, 'github.com/stan-dev/cmdstanr' #for Stan stuff
+	, 'tidyverse' #for all that is good and holy
+)
+
+#load the helper functions:
+source('r/helper_functions.r')
+#helper_functions.r defines:
+# - halfhelmert_contrasts()
+# - get_contrast_matrix()
+# - install_if_missing()
+# - add_diagnostic_bools()
+# - print.stan_summary_tbl()
+# - add_stan_summary_tbl_class()
+# - is_cor_diag()
+
+#install any required packages not already present
+install_if_missing(required_packages)
+
+# define a shorthand for the pipe operator
+`%>%` = magrittr::`%>%`
+
+
+# Read & Prep the data for Stan ----
 
 a = readRDS('rds/a.rds')
-
-# Prep the data for Stan ----
-
-#sort by subject
-a %>% arrange(id) -> a
 
 #make sure everything's a factor with sensible level orders
 a$session = factor(a$session,levels=c(1,2))
@@ -16,9 +41,7 @@ a$cuing = factor(a$cuing,levels=c('invalid','valid'))
 a$flankers = factor(a$flankers,levels=c('incongruent','congruent','neutral'))
 a$sstroop = factor(a$sstroop,levels=c('incongruent','congruent'))
 
-#define a function for nicer contrasts
-halfhelmert_contrasts = function(...) contr.helmert(...)*.5
-
+#set contrasts; treatment for session, half-helmert for all others
 contrasts(a$session) = contr.treatment
 contrasts(a$task) = halfhelmert_contrasts
 contrasts(a$warning) = halfhelmert_contrasts
@@ -37,49 +60,63 @@ W =
 	(
 		a
 		#get the contrast matrix (wrapper on stats::model.matrix)
-		%>% ezStan::get_contrast_matrix(
+		%>% get_contrast_matrix(
 			formula = ~ 0 + session + warning*cuing*sstroop*flankers
 		)
 		#convert to tibble
 		%>% tibble::as_tibble(.name_repair='unique')
-		%>% dplyr::mutate(obs_row= 1:n())
-		%>% tidyr::pivot_longer(cols=c('session','session2'))
+		#make sure there's no grouping at outset
+		%>% dplyr::ungroup()
+		#add variable to keep track of original row order
+		%>% dplyr::mutate(obs_row= 1:dplyr::n())
+		#rename the session column to session1 for neatness
+		%>% dplyr::rename(session1=session)
+		#pivot the session contrast columns to long
 		%>% tidyr::pivot_longer(
-			cols = c(-obs_row,-name,-value)
-			, names_to = 'name2'
-			, values_to = 'value2'
+			cols=c('session1','session2')
+			, names_to = 'which_session_contrast'
+			, values_to = 'session_contrast_value'
 		)
+		#pivot all the other columns
+		%>% tidyr::pivot_longer(
+			cols = c(-obs_row,-which_session_contrast,-session_contrast_value)
+			, names_to = 'which_other_contrast'
+			, values_to = 'other_contrast_value'
+		)
+		# multiply, yielding 0s or original values
 		%>% dplyr::mutate(
-			value2 = value*value2
+			other_contrast_value = other_contrast_value*session_contrast_value
 		)
-		%>% dplyr::select(-value)
+		# don't need this column anymore
+		%>% dplyr::select(-session_contrast_value)
+		# pivot back to wide
 		%>% tidyr::pivot_wider(
-			names_from = c(name,name2)
-			, values_from = value2
+			names_from = c(which_session_contrast,which_other_contrast)
+			, values_from = other_contrast_value
 		)
+		# make sure original order is reinstated
 		%>% dplyr::arrange(obs_row)
+		# don't need this column anymore
 		%>% dplyr::select(-obs_row)
-		# %>% dplyr::distinct()
-		# %>% View()
+		#phew!
 	)
 
 #quick glimpse; lots of rows
 nrow(W)
-# View(W)
+View(head(W))
 
 # get the unique entries in W
-uW = dplyr::distinct(W) %>% dplyr::arrange_all(desc)
-nrow(uW)
+uW = dplyr::distinct(W) %>% dplyr::arrange_all(dplyr::desc)
+nrow(uW) #far fewer!
 
 #double check that contrasts are orthogonal
 table(cor(uW)) #should be 0s & 1s only
 
-#for each unique condition specified by uW, the stan model will
+#Now, for each unique condition specified by uW, the stan model will
 # work out values for that condition for each subject, and we'll need to index
 # into the resulting subject-by-condition matrix. So we need to create our own
 # subject-by-condition matrix and get the indices of the observed data into a
 # the array produced when that matrix is flattened.
-
 uW_per_S =
 	(
 		uW
@@ -121,7 +158,7 @@ err_summary =
 		a
 		%>% dplyr::group_by(obs_index_in_uW_per_S)
 		%>% dplyr::summarise(
-			err_num_obs = n()
+			err_num_obs = dplyr::n()
 			, err_num_err = sum(error)
 		)
 	)
@@ -176,42 +213,49 @@ data_for_stan = tibble::lst(
 
 )
 
+# Sample and inspect the model ----
 mod = cmdstanr::cmdstan_model('stan/err_lrt_loc_scale_FAST.stan')
-
-#sample the model
 fit = mod$sample(
 	data = data_for_stan
 	, chains = parallel::detectCores()/2-1
 	, parallel_chains = parallel::detectCores()/2-1
 	, seed = 1
 	, iter_warmup = 1e3
-	# , iter_sampling = ceiling(num_samples_to_obtain/(phys_cores_minus_one*2))
 	, iter_sampling = 1e3
 	, init = 0
-	# update every 10% (yeah, the progress info sucks; we're working on it)
-	, refresh = 20 #(1e3*2)/10
-	# , adapt_delta = .99
+	, refresh = 20
 )
-
-# 1911.8 for the err_summary version
-fit$cmdstan_diagnose()
 beepr::beep()
 
-fit$summary(variables=c('cor'))
+#gather summary (inc. diagnostics)
+fit_summary =
+	(
+		fit$summary()
+		%>% dplyr::select(variable,mean,q5,q95,rhat,contains('ess'))
+		%>% dplyr::filter(
+			!stringr::str_starts(variable,'chol_corr')
+			, !stringr::str_detect(variable,'helper')
+			, !has_underscore_suffix(variable)
+			, !is_cor_diag_or_lower_tri(variable,prefix='cor')
+		)
+		%>% sort_by_variable_size()
+		%>% add_stan_summary_tbl_class()
+		%>% add_diagnostic_bools(fit)
+	)
+print(fit_summary)
 
 
 #checking that all rhats<1.01 & all ESS>1e3
 (
-	fit$summary()
+	fit_summary
 	%>% dplyr::select(rhat,ess_bulk,ess_tail)
 	%>% summary()
-	#NA's are the _extended variables
 )
 
 
 #quick plot:
 (
-	fit$draws(variables=c('noise','mean_coef','sd_coef','weights'))
+	fit$draws(variables=c('mean_coef_'))
 	%>% bayesplot::mcmc_intervals()
 )
 
