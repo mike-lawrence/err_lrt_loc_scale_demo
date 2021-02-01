@@ -249,6 +249,7 @@ fit_summary =
 		%>% add_diagnostic_bools(fit)
 	)
 print(fit_summary)
+beepr::beep()
 
 
 #checking that all rhats<1.01 & all ESS>1e3
@@ -266,6 +267,7 @@ print(fit_summary)
 )
 
 
-saveRDS(post,file=filename)
+#save for later
+fit$save_object('rds/fit.rds')
 beepr::beep()
 
