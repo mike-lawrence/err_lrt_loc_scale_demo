@@ -78,9 +78,9 @@ install_if_missing = function(pkgs){
 
 #define a function that adds diagnostics as a metadata attribute
 add_diagnostic_bools = function(x,fit){
-	sink('/dev/null')
+	# sink('/dev/null')
 	diagnostics = fit$cmdstan_diagnose()$stdout #annoyingly not quiet-able
-	sink(NULL)
+	# sink(NULL)
 	diagnostic_bools = list(
 		treedepth_maxed = stringr::str_detect(diagnostics,'transitions hit the maximum')
 		, ebfmi_low = stringr::str_detect(diagnostics,' is below the nominal threshold')
