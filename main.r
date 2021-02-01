@@ -230,13 +230,19 @@ beepr::beep()
 #gather summary (inc. diagnostics)
 fit_summary =
 	(
-		fit$summary()
+		fit$summary(
+			variables = c(
+				'mean_coef_'
+				, 'sd_coef_'
+				, 'cor'
+				, 'err_logodds_for_subj_cond'
+				, 'lrt_loc_for_subj_cond'
+				, 'lrt_scale_for_subj_cond'
+			)
+		)
 		%>% dplyr::select(variable,mean,q5,q95,rhat,contains('ess'))
 		%>% dplyr::filter(
-			!stringr::str_starts(variable,'chol_corr')
-			, !stringr::str_detect(variable,'helper')
-			, !has_underscore_suffix(variable)
-			, !is_cor_diag_or_lower_tri(variable,prefix='cor')
+			!is_cor_diag_or_lower_tri(variable,prefix='cor')
 		)
 		%>% sort_by_variable_size()
 		%>% add_stan_summary_tbl_class()
