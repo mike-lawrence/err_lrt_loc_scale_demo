@@ -158,11 +158,11 @@ model{
 	// ) ;
 
 	// err likelihood (FAST version):
-	vector[num_rows_uW*num_subj] flattened_err_logodds_for_subj_cond = inv_logit(to_vector(err_logodds_for_subj_cond)) ;
+	vector[num_rows_uW*num_subj] flattened_err_prob_for_subj_cond = inv_logit(to_vector(err_logodds_for_subj_cond)) ;
 	for(cell in 1:num_err_cells){
 		err_num_err[cell] ~ binomial(
 			err_num_obs[cell]
-			, flattened_err_logodds_for_subj_cond[err_cell_index[cell]]
+			, flattened_err_prob_for_subj_cond[err_cell_index[cell]]
 		) ;
 	}
 
@@ -200,18 +200,18 @@ generated quantities{
 	vector[num_err] err_log_lik ;
 	vector[num_err_cells] err_cell_lpmf ;
 	{
-		vector[num_rows_uW*num_subj] flattened_err_logodds_for_subj_cond = inv_logit(to_vector(err_logodds_for_subj_cond)) ;
+		vector[num_rows_uW*num_subj] flattened_err_prob_for_subj_cond = inv_logit(to_vector(err_logodds_for_subj_cond)) ;
 		for(i in 1:num_lrt){
 			err_log_lik[i] = bernoulli_logit_lpmf(
 				err[i]
-				| flattened_err_logodds_for_subj_cond[err_index[i]]
+				| flattened_err_prob_for_subj_cond[err_index[i]]
 			) ;
 		}
 		for(cell in 1:num_err_cells){
 			err_cell_lpmf[cell] = binomial_lpmf(
 				err_num_err[cell]
 				| err_num_obs[cell]
-				, flattened_err_logodds_for_subj_cond[err_cell_index[cell]]
+				, flattened_err_prob_for_subj_cond[err_cell_index[cell]]
 			) ;
 		}
 	}
