@@ -165,12 +165,9 @@ model{
 	// ) ;
 
 	// err likelihood (FAST version):
-	vector[num_rows_uW*num_subj] flattened_err_prob_for_subj_cond = inv_logit(to_vector(err_logodds_for_subj_cond)) ;
-	for(cell in 1:num_err_cells){
-		err_num_err[cell] ~ binomial(
-			err_num_obs[cell]
-			, flattened_err_prob_for_subj_cond[err_cell_index[cell]]
-		) ;
-	}
+	err_num_err ~ binomial(
+		err_num_obs
+		, inv_logit(to_vector(err_logodds_for_subj_cond))[err_cell_index]
+	) ;
 
 }
