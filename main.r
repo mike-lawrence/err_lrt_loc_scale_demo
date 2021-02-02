@@ -241,16 +241,10 @@ fit_summary =
 			variables = c(
 				'mean_coef_'
 				, 'sd_coef_'
-				, 'cor'
-				, 'err_logodds_for_subj_cond'
-				, 'lrt_loc_for_subj_cond'
-				, 'lrt_scale_for_subj_cond'
+				, 'chol_corr'
 			)
 		)
 		%>% dplyr::select(variable,mean,q5,q95,rhat,contains('ess'))
-		%>% dplyr::filter(
-			!is_cor_diag_or_lower_tri(variable,prefix='cor')
-		)
 		%>% sort_by_variable_size()
 		%>% add_stan_summary_tbl_class()
 		%>% add_diagnostic_bools(fit)
@@ -265,14 +259,42 @@ beepr::beep()
 	%>% summary()
 )
 
-
 #quick plot:
 (
 	fit$draws(variables=c('mean_coef_'))
 	%>% bayesplot::mcmc_intervals()
 )
 
-
 #save for later
 fit$save_object('rds/fit.rds')
 beepr::beep()
+
+# Compute and inspect the GQ ----
+gq_mod = cmdstanr::cmdstan_model('stan/err_lrt_loc_scale_FAST_GQ.stan')
+gq = gq_mod$sample(
+	data = data_for_stan
+	, fitted_params = fit
+	, parallel_chains = parallel::detectCores()/2-1
+	, seed = 1
+	, sig_figs = 18
+	, output_dir = './'
+)
+beepr::beep()
+
+#gather summary
+gq_summary =
+	(
+		gq$summary(
+			variables = c(
+				'cor'
+				, 'err_logodds_for_subj_cond'
+				, 'lrt_loc_for_subj_cond'
+				, 'lrt_scale_for_subj_cond'
+			)
+		)
+		%>% dplyr::select(variable,mean,q5,q95,rhat,contains('ess'))
+		%>% dplyr::filter(
+			!is_cor_diag_or_lower_tri(variable,prefix='cor')
+		)
+	)
+print(gq_summary)
