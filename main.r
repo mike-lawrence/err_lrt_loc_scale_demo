@@ -67,8 +67,13 @@ W =
 		%>% tibble::as_tibble(.name_repair='unique')
 		#make sure there's no grouping at outset
 		%>% dplyr::ungroup()
-		#add variable to keep track of original row order
-		%>% dplyr::mutate(obs_row= 1:dplyr::n())
+		#add a couple variables
+		%>% dplyr::mutate(
+			# to keep track of original row order
+			obs_row= 1:dplyr::n()
+			# intercept term
+			, intercept = 1
+		)
 		#rename the session column to session1 for neatness
 		%>% dplyr::rename(session1=session)
 		#pivot the session contrast columns to long
@@ -102,7 +107,7 @@ W =
 	)
 
 #quick glimpse; lots of rows
-nrow(W)
+dim(W)
 View(head(W))
 
 # get the unique entries in W
@@ -110,7 +115,7 @@ uW = dplyr::distinct(W) %>% dplyr::arrange_all(dplyr::desc)
 nrow(uW) #far fewer!
 
 #double check that contrasts are orthogonal
-table(cor(uW)) #should be 0s & 1s only
+table(cor(uW)) #should be -1/0/+1
 
 #Now, for each unique condition specified by uW, the stan model will
 # work out values for that condition for each subject, and we'll need to index
@@ -224,6 +229,8 @@ fit = mod$sample(
 	, iter_sampling = 1e3
 	, init = 0
 	, refresh = 20
+	, sig_figs = 18
+	, output_dir = './'
 )
 beepr::beep()
 
@@ -251,7 +258,6 @@ fit_summary =
 print(fit_summary)
 beepr::beep()
 
-
 #checking that all rhats<1.01 & all ESS>1e3
 (
 	fit_summary
@@ -270,4 +276,3 @@ beepr::beep()
 #save for later
 fit$save_object('rds/fit.rds')
 beepr::beep()
-
