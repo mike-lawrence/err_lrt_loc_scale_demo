@@ -123,12 +123,12 @@ model{
 				)
 			) ;
 			lrt_scale_for_subj_cond[this_condition,this_subj] = (
-				exp(
+				sqrt(exp(
 					dot_product(
 						subj_coef_[this_subj,(num_cols_uW+1):(num_cols_uW*2)]
 						, uW[this_condition]
 					)
-				)
+				))
 			) ;
 			err_logodds_for_subj_cond[this_condition,this_subj] = (
 				obs_err_intercept
